@@ -1,0 +1,14 @@
+*.o
+*.so
+*.dynlib
+
+.vscode/*
+
+bin/*
+tests/tests
+example
+
+libgithub.dylib
+libgithub.so
+
+relstat

@@ -131,7 +131,7 @@ typedef struct {
     enum gh_item_list_state state;
     enum gh_item_list_order order;
     unsigned int per_page;
-    char *page_url;
+    char page_url[GH_MAX_URL_LEN];
 } gh_client_pull_req_opts_t;
 
 /**

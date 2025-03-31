@@ -163,8 +163,8 @@ parse_link_header(const char *header, link_t *links, int count)
             *url_end = '\0';
             *rel_end = '\0';
 
-            strcpy(links[link_count].url, url_start);
-            strcpy(links[link_count].rel, rel_start);
+            strcpy(links[link_count].url, url_start + 1);
+            strcpy(links[link_count].rel, rel_start + 5);
 
             link_count++;
         }
@@ -231,22 +231,20 @@ header_cb(char *buffer, size_t size, size_t nmemb, void *userdata)
 
             link_t links[link_count];
             parse_link_header(value, links, link_count);
+            
 
             for (int i = 0; i < link_count; i++) {
-                if (strstr(links[i].rel, "first\"") == 0) {
+                if (strstr(links[i].rel, "first\"") != NULL) {
                     strcpy(response->first_link, links[i].url);
                 }
-                if (strstr(links[i].rel, "prev\"") == 0) {
+                if (strstr(links[i].rel, "prev\"") != NULL) {
                     strcpy(response->prev_link, links[i].url);
                 }
-                if (strstr(links[i].rel, "next\"") != NULL) {
-                    memmove(links[i].url, links[i].url + 1, strlen(links[i].url));
+                if (strstr(links[i].rel, "next") != NULL) {
                     strcpy(response->next_link, links[i].url);
-                } else {
-                    response->next_link[0] = '\0';
                 }
 
-                if (strstr(links[i].rel, "last\"") == 0) {
+                if (strstr(links[i].rel, "last\"") != NULL) {
                     strcpy(response->last_link, links[i].url);
                 }
             }
@@ -392,14 +390,13 @@ gh_client_repo_release_by_tag(const char *owner, const char *repo,
     chunk = curl_slist_append(chunk, GH_REQ_VER_HEADER);
     chunk = curl_slist_append(chunk, GH_REQ_DEF_UA_HEADER);
 
-    char url[DEFAULT_URL_SIZE] = {0};
-    strcpy(url, GH_API_REPO_URL);
+    char url[DEFAULT_URL_SIZE] = GH_API_REPO_URL;
     strcat(url, owner);
     strcat(url, "/");
     strcat(url, repo);
     strcat(url, "/releases/tags/");
     strcat(url, tag);
-
+    printf("%s\n", url);
     SET_BASIC_CURL_CONFIG;
 
     CURLcode res = curl_easy_perform(curl);
@@ -1038,40 +1035,46 @@ gh_client_repo_pull_request_list(const char *owner, const char *repo,
 
     char url[DEFAULT_URL_SIZE] = {0};
 
-    if (opts != NULL && opts->page_url != NULL) {
-        strcpy(url, opts->page_url);
+    if (opts != NULL) {
+        if (opts->page_url[0] != '\0') {
+            strcpy(url, opts->page_url);
+        } else {
+            strcpy(url, GH_API_REPO_URL);
+            strcat(url, owner);
+            strcat(url, "/");
+            strcat(url, repo);
+            strcat(url, "/pulls");
+
+            uint8_t first_param_set = 0;
+
+            if (opts->state == GH_ITEM_STATE_CLOSED) {
+                strcat(url, "?state=closed");
+                first_param_set = 1;
+            } else if (opts->state == GH_ITEM_STATE_MERGED) {
+                strcat(url, "?state=merged");
+                first_param_set = 1;
+            }
+    
+            // set the list order. api def is desc
+            if (opts->order == GH_ORDER_ASC) {
+                first_param_set ? strcat(url, "&direction=asc"):
+                    strcat(url, "?direction=asc");
+            }
+    
+            if (opts->per_page > 30) {
+                first_param_set ? strcat(url, "&per_page=") : strcat(url, "?per_page=");
+    
+                char pp_val[11] = {0};
+                sprintf(pp_val, "%d", opts->per_page);
+                strcat(url, pp_val);
+            }
+        }
     } else {
         strcpy(url, GH_API_REPO_URL);
         strcat(url, owner);
         strcat(url, "/");
         strcat(url, repo);
         strcat(url, "/pulls");
-    }
-
-    if (opts != NULL) {
-        uint8_t first_param_set = 0;
-
-        if (opts->state == GH_ITEM_STATE_CLOSED) {
-            strcat(url, "?state=closed");
-            first_param_set = 1;
-        } else if (opts->state == GH_ITEM_STATE_MERGED) {
-            strcat(url, "?state=merged");
-            first_param_set = 1;
-        }
-
-        // set the list order. api def is desc
-        if (opts->order == GH_ORDER_ASC) {
-            first_param_set ? strcat(url, "&direction=asc"):
-                strcat(url, "?direction=asc");
-        }
-
-        if (opts->per_page > 30) {
-            first_param_set ? strcat(url, "&per_page=") : strcat(url, "?per_page=");
-
-            char pp_val[11] = {0};
-            sprintf(pp_val, "%d", opts->per_page);
-            strcat(url, pp_val);
-        }
     }
 
     SET_BASIC_CURL_CONFIG;

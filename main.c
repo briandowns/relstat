@@ -33,6 +33,20 @@ str_to_time(const char *str)
     return mktime(&tm_struct);
 }
 
+bool
+check_upstream_release(const char *org, const char *repo, const char *tag)
+{
+    gh_client_response_t *res = gh_client_repo_release_by_tag(org, repo, tag);
+    if (res->err_msg != NULL) {
+        fprintf(stderr, "%s\n", res->err_msg);
+        gh_client_response_free(res);
+        return false;
+    }
+
+    printf("%s\n", res->resp);
+    return false;
+}
+
 int
 main(int argv, char **argc)
 {
@@ -56,64 +70,73 @@ main(int argv, char **argc)
     gh_client_response_t *res;
  
     json_t *root;
-    json_t *element, *elem, *label, *labels, *label_name;
+    json_t *element, *label, *labels, *label_name;
     json_error_t error;
 
-    do {
-        res = gh_client_repo_pull_request_list("rancher", "rke2", &opts);
-        if (res->err_msg != NULL) {
-            fprintf(stderr, "%s\n", res->err_msg);
-            gh_client_response_free(res);
-            return 1;
-        }
-        printf("XXX - next link: %s\n", res->next_link);
-#ifdef DEBUG
-        printf("%s\n", res->resp);
-#endif
-        root = json_loads(res->resp, 0, &error);
-        if (!root) {
-            fprintf(stderr, "error: on line %d: %s\n", error.line, error.text);
-            return 1;
-        }
+//     do {
+//         res = gh_client_repo_pull_request_list("rancher", "rke2", &opts);
+//         if (res->err_msg != NULL) {
+//             fprintf(stderr, "%s\n", res->err_msg);
+//             gh_client_response_free(res);
+//             return 1;
+//         }
 
-        char *title, *created_at, *url;
+// #ifdef DEBUG
+//         printf("%s\n", res->resp);
+// #endif
+//         root = json_loads(res->resp, 0, &error);
+//         if (!root) {
+//             fprintf(stderr, "error: on line %d: %s\n", error.line, error.text);
+//             return 1;
+//         }
 
-        size_t size = json_array_size(root);
+//         char *title, *created_at, *url;
 
-        for (int i = 0; i < size; i++) {
-            element = json_array_get(root, i);
+//         size_t size = json_array_size(root);
 
-            labels = json_object_get(element, "labels");
-            size_t label_count = json_array_size(labels);
+//         for (size_t i = 0; i < size; i++) {
+//             element = json_array_get(root, i);
 
-            if (label_count > 0) {
-                for (int j = 0; j < label_count; j++) {
-                    label = json_array_get(labels, j);
-                    label_name = json_object_get(label, "name");
+//             labels = json_object_get(element, "labels");
+//             size_t label_count = json_array_size(labels);
 
-                    if (strcmp(json_string_value(label_name), "release") == 0) {
-                        element = json_array_get(root, i);
+//             if (label_count > 0) {
+//                 for (size_t j = 0; j < label_count; j++) {
+//                     label = json_array_get(labels, j);
+//                     label_name = json_object_get(label, "name");
+
+//                     if (strcmp(json_string_value(label_name), "release") == 0) {
+//                         element = json_array_get(root, i);
                         
-                        json_unpack(element, "{s:s, s:s, s:s}", "title",
-                            &title, "created_at", &created_at, "url", &url);
-                        printf("%s\n", title);   
-                    }
-                }
-            }
-        }
+//                         json_unpack(element, "{s:s, s:s, s:s}", "title",
+//                             &title, "created_at", &created_at, "url", &url);
+//                         printf("%s\n", title);   
+//                     }
+//                 }
+//             }
+//         }
         
-        if (strlen(res->next_link) != 0) {
-            opts.page_url = res->next_link;
-        }
+//         if (strlen(res->next_link) != 0) {
+//             strcpy(opts.page_url, res->next_link);
+//         }
 
-        printf("%s\n", res->next_link);
-    } while (res->next_link[0] != '\0');
+//         gh_client_response_free(res);
+//     } while (res->next_link[0] != '\0');
 
     // json_decref(labels);
     // json_decref(label_name);
     // json_decref(element);
     // json_decref(elem);
     json_decref(root);
+
+    gh_client_response_t *res2 = gh_client_repo_release_by_tag("kubernetes", "kubernetes", "v1.29.16");
+    if (res->err_msg != NULL) {
+        fprintf(stderr, "%s\n", res->err_msg);
+        gh_client_response_free(res2);
+        return 1;
+    }
+    printf("%s\n", res2->resp);
+    gh_client_free();
 
     return 0;
 }
