@@ -1,10 +1,13 @@
 BINDIR = bin
 BINARY = relstat
 
-CFLAGS  = -std=c17 -O3 -fPIC -Wall -Wextra
+VERSION = 0.1.0
+
+CFLAGS  = -std=c17 -O3 -fPIC -Wall -Wextra -Dbin_name=$(BINARY) \
+	-Drelstat_version=$(VERSION) -Dgit_sha=$(shell git rev-parse HEAD)
 LDFLAGS = -lcurl -ljansson
 
-$(BINDIR)/$(BINARY): clean
+$(BINDIR)/$(BINARY): $(BINDIR) clean
 	$(CC) -o $@ main.c github.c $(CFLAGS) $(LDFLAGS)
 
 $(BINDIR):

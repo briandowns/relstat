@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 #include <stdio.h>
+#include <stdint.h>
 #include <string.h>
 #include <time.h>
 
@@ -7,12 +8,36 @@
 
 #include "github.h"
 
+#define STR1(x) #x
+#define STR(x) STR1(x)
+
 #define RKE2_REPO_URL "https://github.com/rancher/rke2"
 #define K3S_REPO_URL "https://github.com/k3s-io/k3s"
 
 #define ORG_REPO_SIZE 24
 #define MAX_RELEASE_COUNT 1024
 #define RFC3339_JAN_1 "2024-01-01T00:00:00Z"
+
+#define RED     "\x1b[31m"
+#define GREEN   "\x1b[32m"
+#define YELLOW  "\x1b[33m"
+#define BLUE    "\x1b[34m"
+#define MAGENTA "\x1b[35m"
+#define CYAN    "\x1b[36m"
+#define RESET   "\x1b[0m"
+
+#define USAGE                                                                 \
+    "usage: %s [-vh]\n"                                                       \
+    "  -v          version\n"                                                 \
+    "  -h          help\n\n"                                                  \
+    "commands:\n"                                                             \
+    "  new          --bin <name> create new binary application\n"             \
+    "               --lib <name> create new library\n"                        \
+    "  build        builds the project with the given build constraint.\n"    \
+    "  config       display the current project configuration.\n"             \
+    "  deps         displays the project's dependencies.\n"                   \
+    "  update       retrieves newly added dependencies.\n"                    \
+    "  clean        cleans the current project based on the build parameter\n"
 
 /**
  * str_to_time converts the given date/time string into a time_t value.
@@ -34,28 +59,61 @@ str_to_time(const char *str)
 }
 
 bool
-check_upstream_release(const char *org, const char *repo, const char *tag)
+check_upstream_release(const char *tag)
 {
-    gh_client_response_t *res = gh_client_repo_release_by_tag(org, repo, tag);
+    gh_client_response_t *res = gh_client_repo_release_by_tag("kubernetes", "kubernetes", tag);
     if (res->err_msg != NULL) {
         fprintf(stderr, "%s\n", res->err_msg);
         gh_client_response_free(res);
         return false;
     }
+    gh_client_response_free(res);
 
-    printf("%s\n", res->resp);
-    return false;
+    return true;
 }
 
 int
-main(int argv, char **argc)
+main(int argc, char **argv)
 {
+    if (argc < 2) {
+        printf(USAGE, STR(bin_name));
+        return 1;
+    }
+
     char *token = getenv("GITHUB_TOKEN");
     if (token == NULL || token[0] == '\0') {
         fprintf(stderr, "github token not set in environment or invalid\n");
         return 1;
     }
     gh_client_init(token);
+
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "-v") == 0) {
+            printf("version: %s - git: %s\n", STR(relstat_version),
+                   STR(git_sha));
+            break;
+        }
+        if (strcmp(argv[i], "-h") == 0) {
+            printf(USAGE, STR(bin_name));
+            break;
+        }
+
+        if (strcmp(argv[i], "upstream") == 0) {
+            if (argc < 3) {
+                fprintf(stderr, "upstream requires at least 1 k8s version\n");
+                return 1;
+            }
+            uint8_t version_count = argc - 2;
+            for (uint8_t i = 0; i < version_count; i++) {
+                if (check_upstream_release(argv[i+2])) {
+                    printf("%-10s - " GREEN "OK\n" RESET, argv[i+2]); 
+                } else {
+                    printf("%-10s - " RED "N/A\n" RESET, argv[i+2]);
+                }
+            }
+            break;
+        }
+    }
 
     time_t jan_1_2024 = str_to_time(RFC3339_JAN_1);
     if (jan_1_2024 == -1) {
@@ -127,15 +185,17 @@ main(int argv, char **argc)
     // json_decref(label_name);
     // json_decref(element);
     // json_decref(elem);
-    json_decref(root);
+    // json_decref(root);
 
-    gh_client_response_t *res2 = gh_client_repo_release_by_tag("kubernetes", "kubernetes", "v1.29.16");
-    if (res->err_msg != NULL) {
-        fprintf(stderr, "%s\n", res->err_msg);
-        gh_client_response_free(res2);
-        return 1;
-    }
-    printf("%s\n", res2->resp);
+    // gh_client_response_t *res2 = gh_client_repo_release_by_tag("rancher", "rke2", "v1.29.15+rke2r1");
+    // if (res2->err_msg != NULL) {
+    //     fprintf(stderr, "ERR - %s\n", res2->err_msg);
+    //     gh_client_response_free(res2);
+    //     return 1;
+    // }
+    // printf("XXX - here\n");
+    // printf("%s\n", res2->resp);
+    // gh_client_response_free(res2);
     gh_client_free();
 
     return 0;

@@ -289,8 +289,15 @@ gh_client_octocat_says()
 
     if (res != CURLE_OK) {
         char *err_msg = (char*)curl_easy_strerror(res);
-        response->err_msg = calloc(strlen(err_msg)+1, sizeof(char));
-        strcpy(response->err_msg, err_msg);
+        if (err_msg != NULL) {
+            response->err_msg = calloc(strlen(err_msg)+1, sizeof(char));
+            strcpy(response->err_msg, err_msg);
+        } else {
+            response->err_msg = calloc(strlen(response->resp)+1, sizeof(char));
+            strcpy(response->err_msg, response->resp);
+            free(response->resp);
+            response->resp = NULL;
+        }
 
         curl_slist_free_all(chunk);
 
@@ -396,7 +403,7 @@ gh_client_repo_release_by_tag(const char *owner, const char *repo,
     strcat(url, repo);
     strcat(url, "/releases/tags/");
     strcat(url, tag);
-    printf("%s\n", url);
+
     SET_BASIC_CURL_CONFIG;
 
     CURLcode res = curl_easy_perform(curl);
