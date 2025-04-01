@@ -58,6 +58,25 @@ str_to_time(const char *str)
     return mktime(&tm_struct);
 }
 
+void
+f() 
+{
+    data = "{\"tag_name\":\"v0.21.0\",
+            \"target_commitish\":\"master\",
+            \"name\":\"v.21.0\",
+            \"body\":\"Description of the release\",
+            \"draft\":false,\"prerelease\":false,
+            \"generate_release_notes\":false}";
+    res = gh_client_repo_release_create("briandowns", "devops-testing", data);
+    if (res->err_msg != NULL) {
+        printf("%s\n", res->err_msg);
+        gh_client_response_free(res);
+        return 1;
+    }
+    printf("%s\n", res->resp);
+    gh_client_response_free(res);
+}
+
 bool
 check_upstream_release(const char *tag)
 {
@@ -65,6 +84,9 @@ check_upstream_release(const char *tag)
     if (res->err_msg != NULL) {
         fprintf(stderr, "%s\n", res->err_msg);
         gh_client_response_free(res);
+        return false;
+    }
+    if (res->resp_code != 200) {
         return false;
     }
     gh_client_response_free(res);
@@ -106,9 +128,9 @@ main(int argc, char **argv)
             uint8_t version_count = argc - 2;
             for (uint8_t i = 0; i < version_count; i++) {
                 if (check_upstream_release(argv[i+2])) {
-                    printf("%-10s - " GREEN "OK\n" RESET, argv[i+2]); 
+                    printf("%-10s -  " GREEN "Released\n" RESET, argv[i+2]); 
                 } else {
-                    printf("%-10s - " RED "N/A\n" RESET, argv[i+2]);
+                    printf("%-10s -  " RED "Not Released\n" RESET, argv[i+2]);
                 }
             }
             break;
