@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
-#include <stdio.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
@@ -11,12 +12,19 @@
 #define STR1(x) #x
 #define STR(x) STR1(x)
 
-#define RKE2_REPO_URL "https://github.com/rancher/rke2"
-#define K3S_REPO_URL "https://github.com/k3s-io/k3s"
+#define RKE2_REPO_URL    "https://github.com/rancher/rke2"
+#define RANCHER_REPO_URL "https://github.com/rancher/rancher"
+#define CLI_REPO_URL     "https://github.com/rancher/cli"
+#define K3S_REPO_URL     "https://github.com/k3s-io/k3s"
 
-#define ORG_REPO_SIZE 24
-#define MAX_RELEASE_COUNT 1024
-#define RFC3339_JAN_1 "2024-01-01T00:00:00Z"
+#define RELEASE_BRANCH_LEN 14
+#define ORG_REPO_SIZE      24
+#define MAX_RELEASE_COUNT  1024
+#define RFC3339_JAN_1      "2024-01-01T00:00:00Z"
+
+#define K3S     "k3s"
+#define RKE2    "rke2"
+#define RANCHER "rancher"
 
 #define RED     "\x1b[31m"
 #define GREEN   "\x1b[32m"
@@ -31,13 +39,7 @@
     "  -v          version\n"                                                 \
     "  -h          help\n\n"                                                  \
     "commands:\n"                                                             \
-    "  new          --bin <name> create new binary application\n"             \
-    "               --lib <name> create new library\n"                        \
-    "  build        builds the project with the given build constraint.\n"    \
-    "  config       display the current project configuration.\n"             \
-    "  deps         displays the project's dependencies.\n"                   \
-    "  update       retrieves newly added dependencies.\n"                    \
-    "  clean        cleans the current project based on the build parameter\n"
+    "  build        builds the project with the given build constraint.\n"
 
 /**
  * str_to_time converts the given date/time string into a time_t value.
@@ -58,24 +60,106 @@ str_to_time(const char *str)
     return mktime(&tm_struct);
 }
 
-void
-f() 
+static inline const char*
+org_from_repo(const char *repo)
 {
-    data = "{\"tag_name\":\"v0.21.0\",
-            \"target_commitish\":\"master\",
-            \"name\":\"v.21.0\",
-            \"body\":\"Description of the release\",
-            \"draft\":false,\"prerelease\":false,
-            \"generate_release_notes\":false}";
-    res = gh_client_repo_release_create("briandowns", "devops-testing", data);
-    if (res->err_msg != NULL) {
-        printf("%s\n", res->err_msg);
-        gh_client_response_free(res);
+    if (strcmp(repo, RKE2) == 0 || strcmp(repo, RANCHER) == 0) {
+        return RANCHER;
+    }
+    if (strcmp(repo, K3S)) {
+        return "k3s-io";
+    }
+
+    return "";
+}
+
+#define NEW_RELEASE_TMP "{\"tag_name\":\"%s\"," \
+    "\"target_commitish\":\"master\"," \
+    "\"name\":\"%1$s\"," \
+    "\"body\":\"Description of the release\"," \
+    "\"draft\":false,\"prerelease\":%s," \
+    "\"generate_release_notes\":%s}"
+
+static inline bool
+valid_tag(const char *tag)
+{
+    if (tag[0] == '\0' || tag[0] != 'v') {
+        return false;
+    }
+
+    uint count = 0;
+    for (size_t i = 0; i < strlen(tag); i++) {
+        if (tag[i] == '.') {
+            count++;
+        }
+    }
+    
+    if (count != 2) {
+        return false;
+    }
+
+    return true;
+}
+
+static inline int
+tag_to_release_branch(char *tag, char *release)
+{
+    const char *delim = ".";
+    uint8_t count = 0;
+    char mv[3] = {0};
+    char tag_copy[24] = {0};
+    strncpy(tag_copy, tag, 24);
+
+    char *token = strtok(tag, delim);
+    while (token != NULL) {
+        count++;
+
+        token = strtok(NULL, delim);
+        if (count == 1) {
+            strncpy(mv, token, 3);
+        }
+    }
+
+    uint8_t minor_version = atoi(mv);
+
+    switch(minor_version) {
+    case 29:
+        strncpy(release, "release-1.29", RELEASE_BRANCH_LEN); // LTS
+        break;
+    case 30:
+        strncpy(release, "release-1.30", RELEASE_BRANCH_LEN);
+        break;
+    case 31:
+        strncpy(release, "release-1.31", RELEASE_BRANCH_LEN);
+        break;
+    case 32:
+        strncpy(release, "release-1.32", RELEASE_BRANCH_LEN);
+        break;
+    case 33:
+        strncpy(release, "release-1.33", RELEASE_BRANCH_LEN);
+        break;
+    default:
+        printf("error: unrecognized version: %s\n", tag_copy);
         return 1;
     }
-    printf("%s\n", res->resp);
-    gh_client_response_free(res);
+
+    return 0;
 }
+
+// void
+// f() 
+// {
+//     char data[4096] = {0};
+//     sprintf(data, NEW_RELEASE_TMP, "tag");
+//     gh_client_response_t *res = gh_client_repo_release_create("briandowns", "devops-testing", data);
+//     if (res->err_msg != NULL) {
+//         printf("%s\n", res->err_msg);
+//         gh_client_response_free(res);
+//         return 1;
+//     }
+//     printf("%s\n", res->resp);
+//     gh_client_response_free(res);
+// }
 
 bool
 check_upstream_release(const char *tag)
@@ -135,23 +219,55 @@ main(int argc, char **argv)
             }
             break;
         }
+
+        if (strcmp(argv[i], "tag") == 0) {
+            if (argc < 4) {
+                fprintf(stderr, "tag requires repo and version\n");
+                return 1;
+            }
+
+            char url[GH_MAX_URL_LEN] = {0};
+            if (strcmp(argv[2], "rke2") == 0) {
+                strncpy(url, RKE2_REPO_URL, GH_MAX_URL_LEN);
+                char release_branch[RELEASE_BRANCH_LEN] = {0};
+                if (tag_to_release_branch(argv[3], release_branch) != 0) {
+                    return 1;
+                }
+                printf("%s\n", release_branch);
+            }
+            if (strcmp(argv[2], "rancher") == 0) {
+                strncpy(url, RANCHER_REPO_URL, GH_MAX_URL_LEN);
+            }
+            if (strcmp(argv[2], "cli") == 0) {
+                strncpy(url, CLI_REPO_URL, GH_MAX_URL_LEN); 
+            }
+            if (strcmp(argv[2], "k3s") == 0) {
+                strncpy(url, K3S_REPO_URL, GH_MAX_URL_LEN);
+                char release_branch[RELEASE_BRANCH_LEN] = {0};
+                if (tag_to_release_branch(argv[3], release_branch) != 0) {
+                    return 1;
+                }
+                printf("%s\n", release_branch);
+            }
+            
+        }
     }
 
-    time_t jan_1_2024 = str_to_time(RFC3339_JAN_1);
-    if (jan_1_2024 == -1) {
-        fprintf(stderr, "failed to parse: " RFC3339_JAN_1 "\n");
-        return 1;
-    }
+    // time_t jan_1_2024 = str_to_time(RFC3339_JAN_1);
+    // if (jan_1_2024 == -1) {
+    //     fprintf(stderr, "failed to parse: " RFC3339_JAN_1 "\n");
+    //     return 1;
+    // }
 
-    gh_client_pull_req_opts_t opts = {
-        .state = GH_ITEM_STATE_CLOSED,
-        .per_page = 100
-    };
-    gh_client_response_t *res;
+    // gh_client_pull_req_opts_t opts = {
+    //     .state = GH_ITEM_STATE_CLOSED,
+    //     .per_page = 100
+    // };
+    // gh_client_response_t *res;
  
-    json_t *root;
-    json_t *element, *label, *labels, *label_name;
-    json_error_t error;
+    // json_t *root;
+    // json_t *element, *label, *labels, *label_name;
+    // json_error_t error;
 
 //     do {
 //         res = gh_client_repo_pull_request_list("rancher", "rke2", &opts);
