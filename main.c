@@ -22,9 +22,15 @@
 #define MAX_RELEASE_COUNT  1024
 #define RFC3339_JAN_1      "2024-01-01T00:00:00Z"
 
-#define K3S     "k3s"
-#define RKE2    "rke2"
-#define RANCHER "rancher"
+#define JSON_MAX_PAYLOAD_LEN 1024
+
+#define RKE2_ORG    "rancher"
+#define K3S_ORG     "k3s-io"
+#define RANCHER_ORG "rancher"
+
+#define K3S_REPO     "k3s"
+#define RKE2_REPO    "rke2"
+#define RANCHER_REPO "rancher"
 
 #define RED     "\x1b[31m"
 #define GREEN   "\x1b[32m"
@@ -63,22 +69,22 @@ str_to_time(const char *str)
 static inline const char*
 org_from_repo(const char *repo)
 {
-    if (strcmp(repo, RKE2) == 0 || strcmp(repo, RANCHER) == 0) {
-        return RANCHER;
+    if (strcmp(repo, RKE2_REPO) == 0 || strcmp(repo, RANCHER_REPO) == 0) {
+        return RANCHER_ORG;
     }
-    if (strcmp(repo, K3S)) {
-        return "k3s-io";
+    if (strcmp(repo, K3S_REPO)) {
+        return K3S_ORG;
     }
 
     return "";
 }
 
-#define NEW_RELEASE_TMP "{\"tag_name\":\"%s\"," \
-    "\"target_commitish\":\"master\"," \
+#define NEW_RELEASE_TMPL "{\"tag_name\":\"%1$s\"," \
+    "\"target_commitish\":\"%2$s\"," \
     "\"name\":\"%1$s\"," \
-    "\"body\":\"Description of the release\"," \
-    "\"draft\":false,\"prerelease\":%s," \
-    "\"generate_release_notes\":%s}"
+    "\"body\":\"\"," \
+    "\"draft\":false,\"prerelease\":true," \
+    "\"generate_release_notes\":false}"
 
 static inline bool
 valid_tag(const char *tag)
@@ -108,9 +114,9 @@ tag_to_release_branch(char *tag, char *release)
     uint8_t count = 0;
     char mv[3] = {0};
     char tag_copy[24] = {0};
-    strncpy(tag_copy, tag, 24);
+    strncpy(tag_copy, tag, 24); // don't change the og value
 
-    char *token = strtok(tag, delim);
+    char *token = strtok(tag_copy, delim);
     while (token != NULL) {
         count++;
 
@@ -233,7 +239,10 @@ main(int argc, char **argv)
                 if (tag_to_release_branch(argv[3], release_branch) != 0) {
                     return 1;
                 }
-                printf("%s\n", release_branch);
+                char data[JSON_MAX_PAYLOAD_LEN] = {0};
+                snprintf(data, JSON_MAX_PAYLOAD_LEN, NEW_RELEASE_TMPL, argv[3], release_branch);
+                //gh_client_response_t *res = gh_client_repo_release_create("rancher", argv[2], data);
+                printf("%s\n", data);
             }
             if (strcmp(argv[2], "rancher") == 0) {
                 strncpy(url, RANCHER_REPO_URL, GH_MAX_URL_LEN);
@@ -247,7 +256,7 @@ main(int argc, char **argv)
                 if (tag_to_release_branch(argv[3], release_branch) != 0) {
                     return 1;
                 }
-                printf("%s\n", release_branch);
+                printf("Tag: %s\nBranch: %s\n", argv[3], release_branch);
             }
             
         }

@@ -92,8 +92,6 @@ main(void)
     //     mvwprintw(version_menu_win, version_start_y, 3, "%s", versions[i]);
     // }
 
-    
-
     getch();
 
 exit:
@@ -102,6 +100,3 @@ exit:
 
     return 0;
 }
-
-
-// get latest version of ECM distro tools
